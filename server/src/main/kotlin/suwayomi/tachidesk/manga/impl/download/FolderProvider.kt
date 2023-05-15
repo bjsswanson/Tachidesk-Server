@@ -38,7 +38,7 @@ class FolderProvider(mangaId: Int, chapterId: Int) : DownloadedFilesProvider(man
         val chunks = range.chunked(5);
 
         for(chunk in chunks) {
-            runBlocking {
+            coroutineScope {
                 chunk.map {
                     async {
                         for (pageNum in chunk) {
