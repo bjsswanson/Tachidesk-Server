@@ -40,35 +40,48 @@ class FolderProvider(mangaId: Int, chapterId: Int) : DownloadedFilesProvider(man
         val folder = File(chapterDir)
         folder.mkdirs()
 
-        for (pageNum in 0 until pageCount) {
-            var pageProgressJob: Job? = null
-            val fileName = getPageName(pageNum) // might have to change this to index stored in database
-            if (isExistingFile(folder, fileName)) continue
-            try {
-                Page.getPageImage(
-                    mangaId = download.mangaId,
-                    chapterIndex = download.chapterIndex,
-                    index = pageNum
-                ) { flow ->
-                    pageProgressJob = flow
-                        .sample(100)
-                        .distinctUntilChanged()
-                        .onEach {
-                            download.progress = (pageNum.toFloat() + (it.toFloat() * 0.01f)) / pageCount
-                            step(null, false) // don't throw on canceled download here since we can't do anything
+        val range = 0 until pageCount;
+        val chunks = range.chunked(5);
+
+        for(chunk in chunks) {
+            runBlocking {
+                chunk.map {
+                    async {
+                        for (pageNum in chunk) {
+                            var pageProgressJob: Job? = null
+                            val fileName = getPageName(pageNum) // might have to change this to index stored in database
+                            if (isExistingFile(folder, fileName)) continue
+                            try {
+                                Page.getPageImage(
+                                    mangaId = download.mangaId,
+                                    chapterIndex = download.chapterIndex,
+                                    index = pageNum
+                                ) { flow ->
+                                    pageProgressJob = flow
+                                        .sample(100)
+                                        .distinctUntilChanged()
+                                        .onEach {
+                                            download.progress = (pageNum.toFloat() + (it.toFloat() * 0.01f)) / pageCount
+                                            step(null, false) // don't throw on canceled download here since we can't do anything
+                                        }
+                                        .launchIn(scope)
+                                }.first.use { image ->
+                                    val filePath = "$chapterDir/$fileName"
+                                    ImageResponse.saveImage(filePath, image)
+                                }
+                            } finally {
+                                // always cancel the page progress job even if it throws an exception to avoid memory leaks
+                                pageProgressJob?.cancel()
+                            }
+                            // TODO: retry on error with 2,4,8 seconds of wait
+                            download.progress = ((pageNum + 1).toFloat()) / pageCount
+                            step(download, false)
                         }
-                        .launchIn(scope)
-                }.first.use { image ->
-                    val filePath = "$chapterDir/$fileName"
-                    ImageResponse.saveImage(filePath, image)
+                    }
+                }.forEach {
+                    it.await()
                 }
-            } finally {
-                // always cancel the page progress job even if it throws an exception to avoid memory leaks
-                pageProgressJob?.cancel()
             }
-            // TODO: retry on error with 2,4,8 seconds of wait
-            download.progress = ((pageNum + 1).toFloat()) / pageCount
-            step(download, false)
         }
         return true
     }
