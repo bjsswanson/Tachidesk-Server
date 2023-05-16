@@ -15,6 +15,7 @@ import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.async
 import mu.KotlinLogging
 import org.jetbrains.exposed.sql.and
 import org.jetbrains.exposed.sql.transactions.transaction
@@ -80,12 +81,11 @@ class Downloader(
     private suspend fun run() {
         while (downloadQueue.isNotEmpty() && currentCoroutineContext().isActive) {
             IntRange( 0, 5 ).map { index ->
-                async {
-                    val download = downloadQueue.getOrNull(index)?.takeIf {
-                            it.manga.sourceId.toLong() == sourceId &&
-                            (it.state == Queued || (it.state == Error && it.tries < 3)) // 3 re-tries per download
-                        } ?: break
-                   pop(download);
+                scope.async {
+                    val download = downloadQueue.getOrNull(index)
+                    if(it.manga.sourceId.toLong() == sourceId && (it.state == Queued || (it.state == Error && it.tries < 3))) {
+                        process(download);
+                    }
                 }
             }.forEach {
                 it.await()
