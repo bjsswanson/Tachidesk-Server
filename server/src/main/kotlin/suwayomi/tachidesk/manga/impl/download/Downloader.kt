@@ -79,14 +79,15 @@ class Downloader(
     }
 
     private suspend fun run() {
+        val self = this;
         while (downloadQueue.isNotEmpty() && currentCoroutineContext().isActive) {
             IntRange( 0, 5 ).map { index ->
                 scope.async {
-                    val download : DownloadChapter? = downloadQueue.getOrNull(index).takeIf { 
-                        it?.manga.sourceId.toLong() == sourceId && 
-                            (it?.state == Queued || (it?.state == Error && it?.tries < 3))
+                    val download = downloadQueue.getOrNull(index).takeIf {
+                        it?.manga?.sourceId?.toLong() == sourceId &&
+                            (it?.state == Queued || (it?.state == Error && it.tries < 3))
                     }
-                    
+
                     if(download != null) {
                         try {
                             download.state = Downloading
@@ -95,7 +96,7 @@ class Downloader(
                             download.chapter = getChapterDownloadReady(download.chapterIndex, download.mangaId)
                             step(download, false)
 
-                            ChapterDownloadHelper.download(download.mangaId, download.chapter.id, download, scope, this::step)
+                            ChapterDownloadHelper.download(download.mangaId, download.chapter.id, download, scope, self::step)
                             download.state = Finished
                             transaction {
                                 ChapterTable.update({ (ChapterTable.manga eq download.mangaId) and (ChapterTable.sourceOrder eq download.chapterIndex) }) {
