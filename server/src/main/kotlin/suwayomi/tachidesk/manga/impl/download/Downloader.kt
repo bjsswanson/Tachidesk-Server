@@ -83,47 +83,42 @@ class Downloader(
             IntRange( 0, 5 ).map { index ->
                 scope.async {
                     val download = downloadQueue.getOrNull(index)
-                    if(it.manga.sourceId.toLong() == sourceId && (it.state == Queued || (it.state == Error && it.tries < 3))) {
-                        process(download);
+                    if(download != null && download.manga.sourceId.toLong() == sourceId && (it.state == Queued || (download.state == Error && download.tries < 3))) {                    
+                        try {
+                            download.state = Downloading
+                            step(download, true)
+
+                            download.chapter = getChapterDownloadReady(download.chapterIndex, download.mangaId)
+                            step(download, false)
+
+                            ChapterDownloadHelper.download(download.mangaId, download.chapter.id, download, scope, this::step)
+                            download.state = Finished
+                            transaction {
+                                ChapterTable.update({ (ChapterTable.manga eq download.mangaId) and (ChapterTable.sourceOrder eq download.chapterIndex) }) {
+                                    it[isDownloaded] = true
+                                }
+                            }
+                            step(download, true)
+
+                            downloadQueue.removeIf { it.mangaId == download.mangaId && it.chapterIndex == download.chapterIndex }
+                            step(null, false)
+                        } catch (e: CancellationException) {
+                            logger.debug("Downloader was stopped")
+                            downloadQueue.filter { it.state == Downloading }.forEach { it.state = Queued }
+                        } catch (e: PauseDownloadException) {
+                            download.state = Queued
+                        } catch (e: Exception) {
+                            logger.info("Downloader faced an exception", e)
+                            download.tries++
+                            download.state = Error
+                        } finally {
+                            notifier(false)
+                        }
                     }
                 }
             }.forEach {
                 it.await()
             }
-        }
-    }
-    
-
-    private suspend fun process(download) {   
-        try {
-            download.state = Downloading
-            step(download, true)
-
-            download.chapter = getChapterDownloadReady(download.chapterIndex, download.mangaId)
-            step(download, false)
-
-            ChapterDownloadHelper.download(download.mangaId, download.chapter.id, download, scope, this::step)
-            download.state = Finished
-            transaction {
-                ChapterTable.update({ (ChapterTable.manga eq download.mangaId) and (ChapterTable.sourceOrder eq download.chapterIndex) }) {
-                    it[isDownloaded] = true
-                }
-            }
-            step(download, true)
-
-            downloadQueue.removeIf { it.mangaId == download.mangaId && it.chapterIndex == download.chapterIndex }
-            step(null, false)
-        } catch (e: CancellationException) {
-            logger.debug("Downloader was stopped")
-            downloadQueue.filter { it.state == Downloading }.forEach { it.state = Queued }
-        } catch (e: PauseDownloadException) {
-            download.state = Queued
-        } catch (e: Exception) {
-            logger.info("Downloader faced an exception", e)
-            download.tries++
-            download.state = Error
-        } finally {
-            notifier(false)
         }
     }
 }
