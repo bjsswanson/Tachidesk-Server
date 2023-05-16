@@ -82,7 +82,7 @@ class Downloader(
         while (downloadQueue.isNotEmpty() && currentCoroutineContext().isActive) {
             IntRange( 0, 5 ).map { index ->
                 scope.async {
-                    DownloadChapter download = downloadQueue.getOrNull(index).takeIf { 
+                    val download : DownloadChapter? = downloadQueue.getOrNull(index).takeIf { 
                         it?.manga.sourceId.toLong() == sourceId && 
                             (it?.state == Queued || (it?.state == Error && it?.tries < 3))
                     }
