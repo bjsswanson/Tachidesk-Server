@@ -83,11 +83,11 @@ class Downloader(
             IntRange( 0, 5 ).map { index ->
                 scope.async {
                     val download = downloadQueue.getOrNull(index).takeIf { 
-                        it.manga.sourceId.toLong() == sourceId && 
-                            (it.state == Queued || (it.state == Error && it.tries < 3))
+                        it?.manga.sourceId.toLong() == sourceId && 
+                            (it?.state == Queued || (it?.state == Error && it?.tries < 3))
                     }
                     
-                    if(download != null) {                    
+                    if(download != null) {
                         try {
                             download.state = Downloading
                             step(download, true)
