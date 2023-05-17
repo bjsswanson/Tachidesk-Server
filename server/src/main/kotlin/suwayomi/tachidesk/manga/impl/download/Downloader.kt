@@ -80,8 +80,12 @@ class Downloader(
 
     private suspend fun run() {
         val self = this;
+        logger.info("Downloading!");
         while (downloadQueue.isNotEmpty() && currentCoroutineContext().isActive) {
+            logger.info("Downloading Queue loop!");
+            
             IntRange( 0, 5 ).map { index ->
+                logger.info("Downloader: " + index);
                 scope.async {
                     val download = downloadQueue.getOrNull(index).takeIf {
                         it?.manga?.sourceId?.toLong() == sourceId &&
@@ -93,6 +97,9 @@ class Downloader(
                             download.state = Downloading
                             step(download, true)
 
+                            logger.info("Downloader Manga: " + download.mangaId);
+                            logger.info("Downloader Manga Chapter: " + download.chapterIndex);
+                            
                             download.chapter = getChapterDownloadReady(download.chapterIndex, download.mangaId)
                             step(download, false)
 
